@@ -47,3 +47,9 @@ SevenThirty是一个云养花系统
 1. 定时拍照并上传至七牛
 2. 定时获取温度, 湿度信息上云
 3. 接收云端指令上电浇水
+
+## 运行
+
+#### 本地运行
+
+`uvicorn seventhirty:app --reload`
