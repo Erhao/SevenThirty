@@ -3,5 +3,5 @@ venv
 *.pyc
 __pycache__
 
-conf_local.py
+config/conf_local.py
 .vscode
