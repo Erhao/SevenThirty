@@ -13,7 +13,7 @@ MYSQL_CONFIG = DATABASE['default']
 
 async def register_conn_pool():
     """
-        
+        注册连接池
     """
     try:
         pool = await aiomysql.create_pool(host=MYSQL_CONFIG['HOST'], port=MYSQL_CONFIG['PORT'], user=MYSQL_CONFIG['USER'], password=MYSQL_CONFIG['PASSWORD'], db=MYSQL_CONFIG['DB_NAME'], charset=MYSQL_CONFIG['CHARSET'])
@@ -24,7 +24,7 @@ async def register_conn_pool():
 
 async def get_cursor():
     """
-
+        从连接池中获取连接
     """
     res = await register_conn_pool()
     pool = res['data']

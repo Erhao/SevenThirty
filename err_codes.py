@@ -25,15 +25,25 @@ class ErrorCodes():
         "code": 5001,
         "message": "mysql connection pool init fail"
     }
-
-    WX_BAD_CODE = {
+    REDIS_CONNECTION_FAIL = {
+        "code": 5002,
+        "message": "redis connection or auth fail"
+    }
+    INVALID_TOKEN = {
+        "code": 7001,
+        "message": "invalid token"
+    }
+    WX_INVALID_CODE = {
         "code": 10001,
         "message": "invalid code"
     }
-
     WX_REGISTER_FAIL = {
-        "code": 10001,
+        "code": 10002,
         "message": "can not get openid with code"
+    }
+    WX_INVALID_ENCRYPTED_DATA = {
+        "code": 10003,
+        "message": "invalid encrypted data"
     }
 
 
