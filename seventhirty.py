@@ -1,11 +1,16 @@
 # -*- encoding: utf-8 -*-
 
+import jwt
+
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from weixin.helper import get_session_with_code
+from wx.helper import get_session_with_code, wx_biz_data_decrypt
 from models.user import test as model_test
+from config.conf_local import secret_salt
+from err_codes import SevenThirtyException, error_codes
+from config.conf_local import secret_salt
 
 
 app = FastAPI()
@@ -15,7 +20,14 @@ class WxRegisterReq(BaseModel):
     auth_code: str
 
 
+class WxRegisterResp(BaseModel):
+    token: str
+    code: int
+    message: str
+
+
 class WxRegisterUnionidReq(BaseModel):
+    token: str
     rawData: str
     userInfo: dict
     signature: str
@@ -50,11 +62,16 @@ async def wx_register(req: WxRegisterReq):
 
     Returns:
         token: 自定义登录态
+        code: 错误码
     """
     result = await get_session_with_code(req.auth_code)
-    # TODO(xinyu.zhang): openid持久化
-
-    return result
+    # TODO(mbz): openid持久化
+    sign_data = {
+        "openid": result['openid'],
+        "session_key": result['session_key']
+    }
+    token = jwt.encode(sign_data, secret_salt, algorithm='HS256')
+    return WxRegisterResp(**{"token": token, "code": 0, "message": "success"})
 
 
 @app.post("/wx_register_unionid")
@@ -67,6 +84,17 @@ async def wx_register_unionid(req: WxRegisterUnionidReq):
         signature: 用户信息签名
         encryptedData: 完整用户信息的加密数据
         iv: 加密算法的初始向量
+    Returns:
+        ...
     """
-    
+    sign_data = {}
+    # TODO(mbz): 持久化除unionid以外的用户信息
+    try:
+        sign_data = jwt.decode(req.token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    result = await wx_biz_data_decrypt(req.encryptedData, req.iv, sign_data['session_key'])
+    # TODO(mbz): 持久化unionid
     return {"code": 0, "message": "ok"}
