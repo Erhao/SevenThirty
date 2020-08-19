@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from wx.helper import get_session_with_code, wx_biz_data_decrypt
-from models.user import test as model_test
+from models.user import test as model_test, wx_register_openid
 from config.conf_local import secret_salt
 from err_codes import SevenThirtyException, error_codes
 from config.conf_local import secret_salt
@@ -65,7 +65,7 @@ async def wx_register(req: WxRegisterReq):
         code: 错误码
     """
     result = await get_session_with_code(req.auth_code)
-    # TODO(mbz): openid持久化
+    await wx_register_openid(result['openid'])
     sign_data = {
         "openid": result['openid'],
         "session_key": result['session_key']
