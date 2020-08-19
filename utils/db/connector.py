@@ -16,7 +16,7 @@ async def register_conn_pool():
         注册连接池
     """
     try:
-        pool = await aiomysql.create_pool(host=MYSQL_CONFIG['HOST'], port=MYSQL_CONFIG['PORT'], user=MYSQL_CONFIG['USER'], password=MYSQL_CONFIG['PASSWORD'], db=MYSQL_CONFIG['DB_NAME'], charset=MYSQL_CONFIG['CHARSET'])
+        pool = await aiomysql.create_pool(host=MYSQL_CONFIG['HOST'], port=MYSQL_CONFIG['PORT'], user=MYSQL_CONFIG['USER'], password=MYSQL_CONFIG['PASSWORD'], db=MYSQL_CONFIG['DB_NAME'], charset=MYSQL_CONFIG['CHARSET'], autocommit=True)
         return pool
     except Exception as e:
         raise SevenThirtyException(**error_codes.CONN_POOL_INIT_FAIL)
@@ -26,8 +26,7 @@ async def get_cursor():
     """
         从连接池中获取连接
     """
-    res = await register_conn_pool()
-    pool = res['data']
+    pool = await register_conn_pool()
     conn = await pool.acquire()
     cur = await conn.cursor()
     return pool, conn, cur
