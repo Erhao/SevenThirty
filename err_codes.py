@@ -29,6 +29,14 @@ class ErrorCodes():
         "code": 5002,
         "message": "redis connection or auth fail"
     }
+    GET_LATEST_TIME_POINTER_FAIL = {
+        "code": 5003,
+        "message": "get latest time pointer from redis failed"
+    }
+    GET_LATEST_HUMI_OR_TEMP_FAIL = {
+        "code": 5004,
+        "message": "get latest humidity or tempature failed"
+    }
     INVALID_TOKEN = {
         "code": 7001,
         "message": "invalid token"
