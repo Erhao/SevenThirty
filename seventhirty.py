@@ -9,6 +9,8 @@ from fastapi.encoders import jsonable_encoder
 from wx.helper import get_session_with_code, wx_biz_data_decrypt
 from models.user import test as model_test, wx_register_openid, wx_register_userinfo, get_primary_plant_id
 from models.stpi import save_img_url
+from models.plant import get_plant, get_plant_imgs_with_same_time_pointer
+from models.environment import get_latest_humi_and_temp
 from config.conf_local import secret_salt
 from err_codes import SevenThirtyException, error_codes
 from config.conf_local import secret_salt
@@ -122,7 +124,19 @@ async def get_index(req: IndexReq):
     # 获取用户设置的首页展示植株
     primary_plant_id = await get_primary_plant_id(sign_data['openid'])
     # 根据首页展示植株id获取小程序首页需要的所有信息
-    pass
+    # 1. 获取plant自身信息
+    plant = await get_plant(primary_plant_id)
+    # 2. 获取最近的同一时间点的照片信息
+    plant_imgs = await get_plant_imgs_with_same_time_pointer(primary_plant_id)
+    # 3. 获取最近的温湿度
+    latest_humi, latest_temp = await get_latest_humi_and_temp(primary_plant_id)
+    # TODO(mbz): temp returns, need mod
+    return {"code": 0, "message": "success", "data": {
+        "plant": plant,
+        "plant_imgs": plant_imgs,
+        "latest_humi": latest_humi,
+        "latest_temp": latest_temp
+    }}
 
 
 @app.post("/stpi/img")

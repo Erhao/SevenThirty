@@ -37,6 +37,7 @@ async def get_session_with_code(auth_code):
             raise SevenThirtyException(**error_codes.WX_INVALID_CODE)
         raise SevenThirtyException(**error_codes.WX_REGISTER_FAIL)
     try:
+        # TODO(mbz): import redis from utils.db
         rds = redis.StrictRedis(host=local_conf.redis['HOST'], port=local_conf.redis['PORT'], db=local_conf.redis['DB'], password=local_conf.redis['PASSWORD'])
         rds.set(wx_config['session_key_prefix'] + result['openid'], result['session_key'])
     except:
