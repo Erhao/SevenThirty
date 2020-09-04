@@ -74,6 +74,7 @@ async def get_primary_plant_id(openid):
         SELECT plant_id from user_plant where user_id = %s and is_primary_plant = 1 and is_del = 0
     """
     await cur.execute(get_primary_plant_id_sql, openid)
-    primary_plant_id = await cur.fetchone() or 1
+    primary_plant = await cur.fetchone()
+    primary_plant_id = primary_plant[0] or 1
     await pool.release(conn)
     return primary_plant_id
