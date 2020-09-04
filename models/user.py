@@ -22,7 +22,7 @@ async def test():
 
 async def wx_register_openid(openid):
     """
-        保存openid
+        存储openid
     """
     pool, conn, cur = await get_cursor()
     get_user_with_openid_sql = """
@@ -31,10 +31,16 @@ async def wx_register_openid(openid):
     await cur.execute(get_user_with_openid_sql, openid)
     is_exist = await cur.fetchone()
     if not is_exist:
-        insert_sql = """
-            INSERT INTO user(openid) VALUES (%s);
+        # 先获取最大的serial
+        get_max_serial_sql = """
+            SELECT MAX(serial) FROM user;
         """
-        await cur.execute(insert_sql, openid)
+        await cur.execute(get_max_serial_sql)
+        max_serial = await cur.fetchone()
+        insert_sql = """
+            INSERT INTO user(openid, serial) VALUES (%s, %s);
+        """
+        await cur.execute(insert_sql, (openid, max_serial[0] + 1))
     await pool.release(conn)
     return
 
