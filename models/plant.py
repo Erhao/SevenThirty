@@ -24,7 +24,7 @@ async def get_plant_imgs_with_same_time_pointer(plant_id):
     """
         获取plant的照片信息
     """
-    redis_latest_time_pointer = await redis_cli.get(constants.REDIS_LATEST_TIME_POINTER)
+    redis_latest_time_pointer = redis_cli.get(constants.REDIS_LATEST_TIME_POINTER)
     if not redis_latest_time_pointer:
         raise SevenThirtyException(**error_codes.GET_LATEST_TIME_POINTER_FAIL)
     latest_time_pointer = int(redis_latest_time_pointer)

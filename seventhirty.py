@@ -112,11 +112,11 @@ async def wx_register_unionid(req: WxRegisterUnionidReq):
     return {"code": 0, "message": "ok"}
 
 
-@app.get("stpmini/index")
-async def get_index(req: IndexReq):
+@app.get("/stpmini/index")
+async def get_index(token: str):
     sign_data = {}
     try:
-        sign_data = jwt.decode(req.token, secret_salt, algorithms=['HS256'])
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
     except:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     if 'openid' not in sign_data or 'session_key' not in sign_data:
