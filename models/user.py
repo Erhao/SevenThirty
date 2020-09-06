@@ -78,3 +78,40 @@ async def get_primary_plant_id(openid):
     primary_plant_id = primary_plant[0] or 1
     await pool.release(conn)
     return primary_plant_id
+
+
+async def get_user(openid):
+    """
+        获取用户的详细信息
+    """
+    pool, conn, cur = await get_cursor()
+    get_user_sql = """
+        SELECT * FROM user WHERE openid = %s
+    """
+    await cur.execute(get_user_sql, openid)
+    user = await cur.fetchone()
+    await pool.release(conn)
+    return user
+
+
+async def get_user_plants(openid):
+    """
+        获取用户所有的养护花株
+    """
+    pool, conn, cur = await get_cursor()
+    get_user_plants_sql = """
+        SELECT plant_id, is_primary_plant FROM user_plant WHERE user_id = %s
+    """
+    await cur.execute(get_user_plants_sql, openid)
+    user_plants = await cur.fetchall()
+    plant_ids = [ user_plant[0] for user_plant in user_plants ]
+    print('---------------------pids', plant_ids)
+    get_plants_sql = """
+        SELECT * FROM plant WHERE id IN (%s)
+    """
+    await cur.execute(get_plants_sql, plant_ids)
+    plants = await cur.fetchall()
+    print('-------------------ps', plants)
+    await pool.release(conn)
+    return plants
+
