@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+from datetime import datetime
 from wx.helper import get_session_with_code, wx_biz_data_decrypt
 from models.user import test as model_test, wx_register_openid, wx_register_userinfo, get_primary_plant_id
 from models.stpi import save_img_url
@@ -83,6 +84,7 @@ async def wx_register(req: WxRegisterReq):
         "session_key": result['session_key']
     }
     token = jwt.encode(sign_data, secret_salt, algorithm='HS256')
+    print('---------return', WxRegisterResp(**{"token": token, "code": 0, "message": "success"}))
     return WxRegisterResp(**{"token": token, "code": 0, "message": "success"})
 
 
@@ -99,6 +101,7 @@ async def wx_register_unionid(req: WxRegisterUnionidReq):
     Returns:
         ...
     """
+    print('-------------reg unionid req', req)
     sign_data = {}
     try:
         sign_data = jwt.decode(req.token, secret_salt, algorithms=['HS256'])
@@ -130,13 +133,24 @@ async def get_index(token: str):
     plant_imgs = await get_plant_imgs_with_same_time_pointer(primary_plant_id)
     # 3. 获取最近的温湿度
     latest_humi, latest_temp = await get_latest_humi_and_temp(primary_plant_id)
+    # 组装
+    planting_days = (datetime.now() - plant[3]).days
+    latest_5_imgs = []
+    for plant_img in plant_imgs:
+        latest_5_imgs.append({
+            "datetime": plant_img[4],
+            "img_url": plant_img[2]
+        })
     # TODO(mbz): temp returns, need mod
-    return {"code": 0, "message": "success", "data": {
-        "plant": plant,
-        "plant_imgs": plant_imgs,
+    result = {
+        "plant_name": plant[1],
+        "plant_img_url": plant[2],
+        "planting_days": planting_days,
+        "latest_5_imgs": latest_5_imgs,
         "latest_humi": latest_humi,
         "latest_temp": latest_temp
-    }}
+    }
+    return {"code": 0, "message": "success", "data": result}
 
 
 @app.post("/stpi/img")
@@ -147,7 +161,7 @@ async def recv_img(req: StpiImgReq):
         sign_data = jwt.decode(req.token, secret_salt, algorithms=['HS256'])
     except:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
-    else:
-        if 'datetime' not in sign_data or 'camera_id' not in sign_data:
-            raise SevenThirtyException(**error_codes.INVALID_TOKEN)
-    await save_img_url(req.img_url, sign_data['datetime'], req.plant_id, sign_data['camera_id'])
+    if 'datetime' not in sign_data or 'camera_id' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    time_pointer = int(req.img_url.split('.')[-2].split('_')[-2])
+    await save_img_url(req.img_url, sign_data['datetime'], req.plant_id, sign_data['camera_id'], time_pointer)
