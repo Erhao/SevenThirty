@@ -8,7 +8,14 @@ from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
 from wx.helper import get_session_with_code, wx_biz_data_decrypt
-from models.user import test as model_test, wx_register_openid, wx_register_userinfo, get_primary_plant_id, get_user, get_user_plants
+from models.user import (
+    test as model_test,
+    wx_register_openid,
+    wx_register_userinfo,
+    get_primary_plant_id,
+    get_user,
+    get_user_plants
+)
 from models.stpi import save_img_url
 from models.plant import get_plant, get_plant_imgs_with_same_time_pointer
 from models.environment import get_latest_humi_and_temp
@@ -162,12 +169,12 @@ async def get_mine(token: str):
     if 'openid' not in sign_data or 'session_key' not in sign_data:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     user = await get_user(sign_data['openid'])
-    user_plants = await get_user_plants(sign_data['openid'])
+    _, plants = await get_user_plants(sign_data['openid'])
     serial = user[3]
-    type_count = len(set([ user_plant[4] for user_plant in user_plants ]))
-    plant_count = len(user_plants)
+    type_count = len(set([ plant[4] for plant in plants ]))
+    plant_count = len(plants)
     primary_plant_id = await get_primary_plant_id(sign_data['openid'])
-    index_plant_name = list(filter(lambda plant: plant[0] == primary_plant_id, user_plants))[0][1]
+    index_plant_name = list(filter(lambda plant: plant[0] == primary_plant_id, plants))[0][1]
     result = {
         "serial": serial,
         "type_count": type_count,
@@ -186,22 +193,44 @@ async def get_mine_category(token: str):
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     if 'openid' not in sign_data or 'session_key' not in sign_data:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
-    user_plants = await get_user_plants(sign_data['openid'])
+    _, plants = await get_user_plants(sign_data['openid'])
     result = {}
-    for user_plant in user_plants:
-        if user_plant[4] not in result:
-            result[constants.INDEX_TYPE[user_plant[4]]] = [{
-                "plant_name": user_plant[1],
-                "applicant_name": user_plant[8],
-                "planting_at": user_plant[3].strftime("%Y-%m-%d")
+    for plant in plants:
+        if plant[4] not in result:
+            result[constants.INDEX_TYPE[plant[4]]] = [{
+                "plant_name": plant[1],
+                "applicant_name": plant[8],
+                "planting_at": plant[3].strftime("%Y-%m-%d")
             }]
         else:
-            result[constants.INDEX_TYPE[user_plant[4]]].append([{
-                "plant_name": user_plant[1],
-                "applicant_name": user_plant[8],
-                "planting_at": user_plant[3].strftime("%Y-%m-%d")
+            result[constants.INDEX_TYPE[plant[4]]].append([{
+                "plant_name": plant[1],
+                "applicant_name": plant[8],
+                "planting_at": plant[3].strftime("%Y-%m-%d")
             }])
     return {"code": 0, "message": "success", "data": result}
+
+
+@app.get("/stpmini/mine_plant")
+async def get_mine_plant(token: str):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    user_plants, plants = await get_user_plants(sign_data['openid'])
+    plant_id_plant_info = {
+        user_plant[0]: {
+            "watering_times": user_plant[2],
+            "is_primary_plant": user_plant[1]
+        } for user_plant in user_plants
+    }
+    plant_name_plant_info = {
+        plant[1]: plant_id_plant_info[plant[0]] for plant in plants
+    }
+    return {"code": 0, "message": "success", "data": plant_name_plant_info}
 
 
 @app.post("/stpi/img")
