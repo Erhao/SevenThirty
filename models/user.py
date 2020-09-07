@@ -100,18 +100,15 @@ async def get_user_plants(openid):
     """
     pool, conn, cur = await get_cursor()
     get_user_plants_sql = """
-        SELECT plant_id, is_primary_plant FROM user_plant WHERE user_id = %s
+        SELECT plant_id, is_primary_plant, watering_times FROM user_plant WHERE user_id = %s
     """
     await cur.execute(get_user_plants_sql, openid)
     user_plants = await cur.fetchall()
     plant_ids = [ user_plant[0] for user_plant in user_plants ]
-    print('---------------------pids', plant_ids)
     get_plants_sql = """
-        SELECT * FROM plant WHERE id IN (%s)
-    """
-    await cur.execute(get_plants_sql, plant_ids)
+        SELECT * FROM plant WHERE id IN ({})
+    """.format(','.join([str(plant_id) for plant_id in plant_ids]))
+    await cur.execute(get_plants_sql)
     plants = await cur.fetchall()
-    print('-------------------ps', plants)
     await pool.release(conn)
-    return plants
-
+    return user_plants, plants
