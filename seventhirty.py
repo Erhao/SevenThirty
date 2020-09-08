@@ -223,6 +223,7 @@ async def get_mine_plant(token: str):
     user_plants, plants = await get_user_plants(sign_data['openid'])
     plant_id_plant_info = {
         user_plant[0]: {
+            "plant_id": user_plant[0],
             "watering_times": user_plant[2],
             "is_primary_plant": user_plant[1]
         } for user_plant in user_plants
@@ -242,20 +243,30 @@ async def get_rank(token: str, plant_id: int):
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     if 'openid' not in sign_data or 'session_key' not in sign_data:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    plant = await get_plant(plant_id)
     user_plants, users = await get_rank_list(plant_id)
     openid_nickname = {
         user[0]: user[4] for user in users
     }
-    rank_list = [
-        {
-            user_plant[0]: {
-                "user_name": openid_nickname[user_plant[0]],
-                "watering_times": user_plant[3],
-                "is_self": 1 if user_plant[0] == sign_data['openid'] else 0
-            } for user_plant in user_plants
+    rank_list = []
+    rank = -1
+    max_watering_times = float('inf')
+    for user_plant in user_plants:
+        if max_watering_times > user_plant[3]:
+            max_watering_times = user_plant[3]
+            rank += 1
+        rank_info = {
+            "user_id": user_plant[0],
+            "user_name": openid_nickname[user_plant[0]],
+            "watering_times": user_plant[3],
+            "rank": rank,
+            "is_self": 1 if user_plant[0] == sign_data['openid'] else 0
         }
-    ]
-    return {"code": 0, "message": "success", "data": rank_list}
+        rank_list.append(rank_info)
+    return {"code": 0, "message": "success", "data": {
+        "plant_name": plant[1],
+        "rank_list": rank_list,
+    }}
 
 
 @app.post("/stpi/img")
