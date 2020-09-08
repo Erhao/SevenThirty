@@ -94,6 +94,20 @@ async def get_user(openid):
     return user
 
 
+async def get_users(openids):
+    """
+        批量获取用户的详细信息
+    """
+    pool, conn, cur = await get_cursor()
+    get_users_sql = """
+        SELECT * FROM user WHERE openid IN ({})
+    """.format(','.join(["'" + openid + "'" for openid in openids]))
+    await cur.execute(get_users_sql)
+    users = await cur.fetchall()
+    await pool.release(conn)
+    return users
+
+
 async def get_user_plants(openid):
     """
         获取用户所有的养护花株
@@ -112,3 +126,19 @@ async def get_user_plants(openid):
     plants = await cur.fetchall()
     await pool.release(conn)
     return user_plants, plants
+
+
+async def get_rank_list(plant_id):
+    """
+        获取植株的养护排名
+    """
+    pool, conn, cur = await get_cursor()
+    get_rank_list_sql = """
+        SELECT user_id, plant_id, is_primary_plant, watering_times FROM user_plant WHERE plant_id = %s AND watering_times > %s ORDER BY watering_times DESC LIMIT 10
+    """
+    await cur.execute(get_rank_list_sql, (plant_id, 0))
+    user_plants = await cur.fetchall()
+    user_ids = [ user_plant[0] for user_plant in user_plants ]
+    users = await get_users(user_ids)
+    await pool.release(conn)
+    return user_plants, users
