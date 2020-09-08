@@ -19,7 +19,7 @@ class Constants():
     PLANT_IMG_CDN_SUFFIX = '.jpg'
 
     # 植株类型映射
-    INDEX_TYPE = {
+    PLANT_TYPE = {
         1: '满天星'
     }
 

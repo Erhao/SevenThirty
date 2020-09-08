@@ -131,8 +131,11 @@ async def get_index(token: str):
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     if 'openid' not in sign_data or 'session_key' not in sign_data:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
-    # 获取用户设置的首页展示植株
-    primary_plant_id = await get_primary_plant_id(sign_data['openid'])
+    # 获取用户设置的首页展示植株, 如果用户未授权则默认展示plant_id=1的植株信息
+    user = await get_user(sign_data['openid'])
+    # serial<0 即为未授权用户
+    is_authoried = True if user[3] >= 0 else False
+    primary_plant_id = await get_primary_plant_id(sign_data['openid']) if is_authoried else 1
     # 根据首页展示植株id获取小程序首页需要的所有信息
     # 1. 获取plant自身信息
     plant = await get_plant(primary_plant_id)
@@ -197,13 +200,13 @@ async def get_mine_category(token: str):
     result = {}
     for plant in plants:
         if plant[4] not in result:
-            result[constants.INDEX_TYPE[plant[4]]] = [{
+            result[constants.PLANT_TYPE[plant[4]]] = [{
                 "plant_name": plant[1],
                 "applicant_name": plant[8],
                 "planting_at": plant[3].strftime("%Y-%m-%d")
             }]
         else:
-            result[constants.INDEX_TYPE[plant[4]]].append([{
+            result[constants.PLANT_TYPE[plant[4]]].append([{
                 "plant_name": plant[1],
                 "applicant_name": plant[8],
                 "planting_at": plant[3].strftime("%Y-%m-%d")
@@ -267,6 +270,28 @@ async def get_rank(token: str, plant_id: int):
         "plant_name": plant[1],
         "rank_list": rank_list,
     }}
+
+
+@app.get("/stpmini/primary_plant")
+async def get_primary_plant(token: str):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    primary_plant_id = await get_primary_plant_id(sign_data['openid'])
+    primary_plant = await get_plant(primary_plant_id)
+    result = {
+        "plant_id": primary_plant[0],
+        "plant_name": primary_plant[1],
+        "planting_at": primary_plant[3].strftime("%Y_%m_%d"),
+        "type": constants.PLANT_TYPE[primary_plant[0]],
+        "intro": primary_plant[6],
+        "applicant_name": primary_plant[8],
+    }
+    return {"code": 0, "message": "success", "data": result}
 
 
 @app.post("/stpi/img")

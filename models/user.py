@@ -31,16 +31,11 @@ async def wx_register_openid(openid):
     await cur.execute(get_user_with_openid_sql, openid)
     is_exist = await cur.fetchone()
     if not is_exist:
-        # 先获取最大的serial
-        get_max_serial_sql = """
-            SELECT MAX(serial) FROM user;
-        """
-        await cur.execute(get_max_serial_sql)
-        max_serial = await cur.fetchone()
+        # 新注册未授权用户的serial都为数据库设置的默认值-1
         insert_sql = """
-            INSERT INTO user(openid, serial) VALUES (%s, %s);
+            INSERT INTO user(openid) VALUES (%s);
         """
-        await cur.execute(insert_sql, (openid, max_serial[0] + 1))
+        await cur.execute(insert_sql, openid)
     await pool.release(conn)
     return
 
@@ -52,14 +47,32 @@ async def wx_register_userinfo(openid, user_info):
     qiniu_avatarurl = await upload_to_qiniu(user_info['avatarUrl'])
 
     pool, conn, cur = await get_cursor()
+    # 如果是之前授过权的老用户则不需要更新serial
+    check_is_old_authoried_user_sql = """
+        SELECT serial FROM user WHERE openid = %s AND serial >= 0
+    """
+    await cur.execute(check_is_old_authoried_user_sql)
+    is_old_authoried_user = await cur.fetchone()
+
+    new_serial = -1
+    if not is_old_authoried_user:
+        # 先获取最大的serial
+        get_max_serial_sql = """
+            SELECT MAX(serial) FROM user;
+        """
+        await cur.execute(get_max_serial_sql)
+        max_serial = await cur.fetchone()
+        new_serial = max_serial[0] + 1
+    else:
+        new_serial = is_old_authoried_user[0]
     save_user_info_sql = """
         UPDATE user
-        SET nickname = %s, gender = %s, language = %s, city = %s, province = %s, country = %s, avatarurl = %s
+        SET serial = %s, nickname = %s, gender = %s, language = %s, city = %s, province = %s, country = %s, avatarurl = %s
         WHERE openid = %s;
     """
     await cur.execute(
         save_user_info_sql,
-        (user_info['nickName'], user_info['gender'], user_info['language'], user_info['city'], user_info['province'], user_info['country'], qiniu_avatarurl, openid)
+        (new_serial, user_info['nickName'], user_info['gender'], user_info['language'], user_info['city'], user_info['province'], user_info['country'], qiniu_avatarurl, openid)
     )
     await pool.release(conn)
     return
