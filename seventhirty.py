@@ -14,7 +14,8 @@ from models.user import (
     wx_register_userinfo,
     get_primary_plant_id,
     get_user,
-    get_user_plants
+    get_user_plants,
+    get_rank_list
 )
 from models.stpi import save_img_url
 from models.plant import get_plant, get_plant_imgs_with_same_time_pointer
@@ -147,7 +148,6 @@ async def get_index(token: str):
             "datetime": plant_img[4],
             "img_url": plant_img[2]
         })
-    # TODO(mbz): temp returns, need mod
     result = {
         "plant_name": plant[1],
         "plant_img_url": plant[2],
@@ -231,6 +231,31 @@ async def get_mine_plant(token: str):
         plant[1]: plant_id_plant_info[plant[0]] for plant in plants
     }
     return {"code": 0, "message": "success", "data": plant_name_plant_info}
+
+
+@app.get("/stpmini/rank")
+async def get_rank(token: str, plant_id: int):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    user_plants, users = await get_rank_list(plant_id)
+    openid_nickname = {
+        user[0]: user[4] for user in users
+    }
+    rank_list = [
+        {
+            user_plant[0]: {
+                "user_name": openid_nickname[user_plant[0]],
+                "watering_times": user_plant[3],
+                "is_self": 1 if user_plant[0] == sign_data['openid'] else 0
+            } for user_plant in user_plants
+        }
+    ]
+    return {"code": 0, "message": "success", "data": rank_list}
 
 
 @app.post("/stpi/img")
