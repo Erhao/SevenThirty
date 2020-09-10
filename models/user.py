@@ -121,6 +121,20 @@ async def get_users(openids):
     return users
 
 
+async def get_point_and_rank(openid):
+    """
+        获取用户的总积分和排名信息
+    """
+    pool, conn, cur = await get_cursor()
+    get_point_and_rank_sql = """
+        SELECT `point`, `rank` FROM user WHERE openid = %s
+    """
+    await cur.execute(get_point_and_rank_sql, openid)
+    point_and_rank = await cur.fetchone()
+    await pool.release(conn)
+    return point_and_rank
+
+
 async def get_user_plants(openid):
     """
         获取用户所有的养护花株

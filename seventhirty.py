@@ -15,7 +15,8 @@ from models.user import (
     get_primary_plant_id,
     get_user,
     get_user_plants,
-    get_rank_list
+    get_rank_list,
+    get_point_and_rank
 )
 from models.stpi import save_img_url
 from models.plant import get_plant, get_plant_imgs_with_same_time_pointer
@@ -183,6 +184,23 @@ async def get_mine(token: str):
         "type_count": type_count,
         "plant_count": plant_count,
         "index_plant_name": index_plant_name
+    }
+    return {"code": 0, "message": "success", "data": result}
+
+
+@app.get("/stpmini/mine/total_point")
+async def get_mine_total_point(token: str):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    point_and_rank = await get_point_and_rank(sign_data['openid'])
+    result = {
+        "point": point_and_rank[0],
+        "rank": point_and_rank[1]
     }
     return {"code": 0, "message": "success", "data": result}
 
