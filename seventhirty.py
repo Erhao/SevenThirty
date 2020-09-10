@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from datetime import datetime
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from wx.helper import get_session_with_code, wx_biz_data_decrypt
 from models.user import (
     test as model_test,
@@ -25,6 +26,7 @@ from config.conf_local import secret_salt
 from err_codes import SevenThirtyException, error_codes
 from config.conf_local import secret_salt
 from constants import constants
+from scheduler.point import update_point_and_rank
 
 
 app = FastAPI()
@@ -67,6 +69,18 @@ async def catch_error(request: Request, call_next):
     except Exception as e:
         resp = jsonable_encoder(e)
         return JSONResponse(content=resp)
+
+
+# 定时任务
+@app.on_event('startup')
+async def init_scheduler():
+    """
+        初始化定时任务
+    """
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(update_point_and_rank, 'cron', hour=7, minute=30)
+
+    scheduler.start()
 
 
 @app.get("/test")
