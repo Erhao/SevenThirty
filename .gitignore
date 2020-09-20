@@ -7,3 +7,5 @@ config/conf_local.py
 .vscode
 .qiniu_*
 nohup.out
+
+.python-version
