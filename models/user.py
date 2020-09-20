@@ -16,7 +16,6 @@ async def test():
     # 返回为二维元组
     users = await cur.fetchall()
     await pool.release(conn)
-    print('--------------users', users)
     return users
 
 
@@ -51,11 +50,11 @@ async def wx_register_userinfo(openid, user_info):
     check_is_old_authoried_user_sql = """
         SELECT serial FROM user WHERE openid = %s AND serial >= 0
     """
-    await cur.execute(check_is_old_authoried_user_sql)
-    is_old_authoried_user = await cur.fetchone()
+    await cur.execute(check_is_old_authoried_user_sql, openid)
+    serial_res = await cur.fetchone()
 
     new_serial = -1
-    if not is_old_authoried_user:
+    if not serial_res:
         # 先获取最大的serial
         get_max_serial_sql = """
             SELECT MAX(serial) FROM user;
@@ -64,7 +63,7 @@ async def wx_register_userinfo(openid, user_info):
         max_serial = await cur.fetchone()
         new_serial = max_serial[0] + 1
     else:
-        new_serial = is_old_authoried_user[0]
+        new_serial = serial_res[0]
     save_user_info_sql = """
         UPDATE user
         SET serial = %s, nickname = %s, gender = %s, language = %s, city = %s, province = %s, country = %s, avatarurl = %s
@@ -74,6 +73,12 @@ async def wx_register_userinfo(openid, user_info):
         save_user_info_sql,
         (new_serial, user_info['nickName'], user_info['gender'], user_info['language'], user_info['city'], user_info['province'], user_info['country'], qiniu_avatarurl, openid)
     )
+    # 如果是之前未授权的用户注册, 则需要为其添加一株默认花株
+    if not serial_res:
+        add_default_plant_sql = """
+            INSERT INTO user_plant(user_id, plant_id, is_primary_plant) VALUES (%s, %s, %s);
+        """
+        await cur.execute(add_default_plant_sql, (openid, 1, 1))
     await pool.release(conn)
     return
 
@@ -119,6 +124,19 @@ async def get_users(openids):
     users = await cur.fetchall()
     await pool.release(conn)
     return users
+
+
+async def calculate_point(openid, plant_id, point):
+    """
+        加分
+    """
+    pool, conn, cur = await get_cursor()
+    calculate_point_sql = """
+        UPDATE user_plant SET point = point + %s WHERE plant_id = %s AND user_id = %s
+    """
+    await cur.execute(calculate_point_sql, (point, plant_id, openid))
+    await pool.release(conn)
+    return
 
 
 async def get_point_and_rank(openid):

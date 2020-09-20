@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 
 import jwt
+import time
 
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
@@ -17,16 +18,20 @@ from models.user import (
     get_user,
     get_user_plants,
     get_rank_list,
-    get_point_and_rank
+    get_point_and_rank,
+    calculate_point
 )
 from models.stpi import save_img_url
 from models.plant import get_plant, get_plant_imgs_with_same_time_pointer
 from models.environment import get_latest_humi_and_temp
 from config.conf_local import secret_salt
 from err_codes import SevenThirtyException, error_codes
-from config.conf_local import secret_salt
+from config.conf_local import secret_salt, local_conf
 from constants import constants
 from scheduler.point import update_point_and_rank
+from mqtt.mqtt_jobs import pub_watering_cmd, sub_soil_moisture, sub_temp_humi
+from utils.db.redis_conn import redis_cli
+from multiprocessing import Process
 
 
 app = FastAPI()
@@ -60,6 +65,11 @@ class IndexReq(BaseModel):
     token: str
 
 
+class WateringReq(BaseModel):
+    token: str
+    plant_id: int
+
+
 # 全局错误捕获中间件
 @app.middleware("http")
 async def catch_error(request: Request, call_next):
@@ -81,6 +91,26 @@ async def init_scheduler():
     scheduler.add_job(update_point_and_rank, 'cron', hour=7, minute=30)
 
     scheduler.start()
+
+
+# 多进程监听土壤湿度上报
+@app.on_event('startup')
+def init_sub_soil_moisture():
+    """
+        监听土壤湿度上报
+    """
+    sub_soil_moisture_process = Process(target=sub_soil_moisture)
+    sub_soil_moisture_process.start()
+
+
+# 多进程监听空气温湿度上报
+@app.on_event('startup')
+def init_sub_temp_humi():
+    """
+        监听土壤湿度上报
+    """
+    sub_temp_humi_process = Process(target=sub_temp_humi)
+    sub_temp_humi_process.start()
 
 
 @app.get("/test")
@@ -167,6 +197,7 @@ async def get_index(token: str):
             "img_url": plant_img[2]
         })
     result = {
+        "plant_id": plant[0],
         "plant_name": plant[1],
         "plant_img_url": plant[2],
         "planting_days": planting_days,
@@ -304,8 +335,8 @@ async def get_rank(token: str, plant_id: int):
     }}
 
 
-@app.get("/stpmini/primary_plant")
-async def get_primary_plant(token: str):
+@app.get("/stpmini/plant")
+async def get_plant_with_id(token: str, plant_id: int):
     sign_data = {}
     try:
         sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
@@ -313,17 +344,109 @@ async def get_primary_plant(token: str):
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     if 'openid' not in sign_data or 'session_key' not in sign_data:
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
-    primary_plant_id = await get_primary_plant_id(sign_data['openid'])
-    primary_plant = await get_plant(primary_plant_id)
+    plant = await get_plant(plant_id)
     result = {
-        "plant_id": primary_plant[0],
-        "plant_name": primary_plant[1],
-        "planting_at": primary_plant[3].strftime("%Y_%m_%d"),
-        "type": constants.PLANT_TYPE[primary_plant[0]],
-        "intro": primary_plant[6],
-        "applicant_name": primary_plant[8],
+        "plant_id": plant[0],
+        "plant_name": plant[1],
+        "planting_at": plant[3].strftime("%Y-%m-%d"),
+        "type": constants.PLANT_TYPE[plant[0]],
+        "intro": plant[6],
+        "applicant_name": plant[8],
     }
     return {"code": 0, "message": "success", "data": result}
+
+
+@app.post("/stpmini/watering")
+async def watering(req: WateringReq):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(req.token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+
+    now = datetime.now()
+    # 距离上次浇水时间小于30min则驳回请求
+    latest_watering_info_res = redis_cli.get(constants.REDIS_LATEST_WATERING_INFO_PREFIX + str(req.plant_id)).decode('utf-8')
+    latest_watering_datetime = datetime.strptime(latest_watering_info_res.split(',')[0], '%Y-%m-%d %H:%M:%S')
+    if (now - latest_watering_datetime).seconds < 1800:
+        return {"code": 0, "message": "success", "data": {
+            "status": constants.WATERING_REQ_STATUS['rejected'],
+            "msg": "刚刚浇过水了, 等会儿再来试试吧~"
+        }}
+
+    # 最近一次上报的土壤湿度为'1'则驳回请求
+    latest_soil_moisture_res = redis_cli.get(constants.REDIS_LATEST_SOIL_MOISTURE_PREFIX + str(req.plant_id)).decode('utf-8')
+    if latest_soil_moisture_res == constants.SOIL_MOISTURE['WET']:
+        return {"code": 0, "message": "success", "data": {
+            "status": constants.WATERING_REQ_STATUS['rejected'],
+            "msg": "土壤水分充足, 等会儿再来试试吧~"
+        }}
+
+    # 获得积分 = 1.0 * 土壤湿度系数 * 时间规则系数
+    """
+        土壤湿度系数:
+            1       -       距离上一次浇水0.5h~4h
+            1.1     -       距离上一次浇水4h~6h
+            1.2     -       距离上一次浇水6h~12h
+            1.4     -       距离上一次浇水12h~24h
+            1.8     -       距离上一次浇水>24h
+        时间规则系数:
+            1       -       12:00~15:00
+            1.2     -       其他时间段
+    """
+    soil_moisture_coefficient = 1
+    hours = (now - latest_watering_datetime).seconds / 3600
+    if hours <= 4:
+        soil_moisture_coefficient = 1
+    elif hours <= 6:
+        soil_moisture_coefficient = 1.1
+    elif hours <= 12:
+        soil_moisture_coefficient = 1.2
+    elif hours <= 24:
+        soil_moisture_coefficient = 1.4
+    else:
+        soil_moisture_coefficient = 1.8
+
+    time_rule_coefficient = 1
+    if now.hour <= 12 or now.hour >= 15:
+        time_rule_coefficient = 1.2
+
+    point = int(100 * soil_moisture_coefficient * time_rule_coefficient)
+    await calculate_point(sign_data['openid'], req.plant_id, point)
+
+    # 更新redis最近一次浇水信息
+    user = await get_user(sign_data['openid'])
+    new_latest_watering_info = now.strftime("%Y-%m-%d %H:%M:%S") + ',' + user[4]
+    redis_cli.set(constants.REDIS_LATEST_WATERING_INFO_PREFIX + str(req.plant_id), new_latest_watering_info)
+
+    # 发布浇水命令
+    pub_watering_cmd_process = Process(target=pub_watering_cmd, args=(req, sign_data))
+    pub_watering_cmd_process.start()
+
+    return {"code": 0, "message": "success", "data": {
+        "status": constants.WATERING_REQ_STATUS['success'],
+        "msg": "预计用时15秒, 正在浇水中..."
+    }}
+
+
+@app.get("/stpmini/latest_watering_info")
+async def get_latest_watering_info(token: str, plant_id: int):
+    sign_data = {}
+    try:
+        sign_data = jwt.decode(token, secret_salt, algorithms=['HS256'])
+    except:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    if 'openid' not in sign_data or 'session_key' not in sign_data:
+        raise SevenThirtyException(**error_codes.INVALID_TOKEN)
+    latest_watering_info_res = redis_cli.get(constants.REDIS_LATEST_WATERING_INFO_PREFIX + str(plant_id)).decode('utf-8')
+    latest_watering_time = latest_watering_info_res.split(',')[0]
+    latest_watering_user = latest_watering_info_res.split(',')[1]
+    return {"code": 0, "message": "success", "data": {
+        "latest_watering_time": latest_watering_time,
+        "latest_watering_user": latest_watering_user,
+    }}
 
 
 @app.post("/stpi/img")
@@ -338,3 +461,4 @@ async def recv_img(req: StpiImgReq):
         raise SevenThirtyException(**error_codes.INVALID_TOKEN)
     time_pointer = int(req.img_url.split('.')[-2].split('_')[-2])
     await save_img_url(req.img_url, sign_data['datetime'], req.plant_id, sign_data['camera_id'], time_pointer)
+    return
